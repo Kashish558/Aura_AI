@@ -46,6 +46,7 @@ else:
 
 active_model_name = "llama-3.3-70b-versatile" 
 
+# Kisi bhi extra verification check ko bypass karke direct client initialize kar rahe hain
 if api_key:
     client = OpenAI(
         base_url="https://api.groq.com/openai/v1",
@@ -53,7 +54,6 @@ if api_key:
     )
 else:
     client = None
-
 # ==================== STYLING ====================
 st.markdown("""
 <style>
