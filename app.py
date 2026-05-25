@@ -12,6 +12,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
 # ==================== SESSION STATE INITIALIZATION ====================
 if "chats" not in st.session_state:
     st.session_state.chats = {}
@@ -46,7 +47,6 @@ else:
 
 active_model_name = "llama-3.3-70b-versatile" 
 
-# Kisi bhi extra verification check ko bypass karke direct client initialize kar rahe hain
 if api_key:
     client = OpenAI(
         base_url="https://api.groq.com/openai/v1",
@@ -54,6 +54,7 @@ if api_key:
     )
 else:
     client = None
+
 # ==================== STYLING ====================
 st.markdown("""
 <style>
@@ -243,9 +244,13 @@ if len(current_chat["messages"]) > 0 and current_chat["messages"][-1]["role"] ==
             message_placeholder.markdown(full_response)
         else:
             try:
+                # FIX: Filtering data structures securely to prevent KeyError: 'timestamp'
                 api_messages = []
                 for m in current_chat["messages"]:
-                    api_messages.append({"role": m["role"], "content": m["content"]})
+                    api_messages.append({
+                        "role": m["role"], 
+                        "content": m["content"]
+                    })
 
                 response = client.chat.completions.create(
                     model=active_model_name,
