@@ -1,21 +1,17 @@
 import streamlit as st
-from openai import OpenAI
 import os
-from dotenv import load_dotenv
+import sys
+from openai import OpenAI
 import uuid
 from datetime import datetime
-import base64
 
 # ==================== CONFIGURATION ====================
-load_dotenv()
-
 st.set_page_config(
     page_title="Aura AI",
     page_icon="✨",
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
 # ==================== SESSION STATE INITIALIZATION ====================
 if "chats" not in st.session_state:
     st.session_state.chats = {}
@@ -43,8 +39,6 @@ if "current_uploaded_files" not in st.session_state:
     st.session_state.current_uploaded_files = []
 
 # ==================== FREE API CORE SETUP (GROQ) ====================
-# ==================== FREE API CORE SETUP (GROQ) ====================
-# FIX: Cloud deployment ke liye secrets management configuration utilize kar rahe hain
 if "GROQ_API_KEY" in st.secrets:
     api_key = st.secrets["GROQ_API_KEY"]
 else:
@@ -82,8 +76,6 @@ st.markdown("""
     .stButton button:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4); }
     [data-testid="stSidebar"] .stButton button { background: transparent; color: #d0d0d0; border: 1px solid #3d3d3d; box-shadow: none; width: 100%; text-align: left; justify-content: flex-start; padding: 0.75rem 1rem; }
     [data-testid="stSidebar"] .stButton button:hover { background: rgba(99, 102, 241, 0.1); border-color: #6366f1; transform: none; }
-    [data-testid="stFileUploader"] { background: #1e1e1e; border: 2px dashed #3d3d3d; border-radius: 12px; padding: 1rem; }
-    [data-testid="stFileUploader"] label { color: #d0d0d0 !important; }
     .welcome-container { text-align: center; padding: 4rem 2rem; max-width: 800px; margin: 0 auto; }
     .welcome-title { font-size: 3.5rem; font-weight: 800; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin-bottom: 1rem; line-height: 1.2; }
     .welcome-subtitle { font-size: 1.25rem; color: #a0a0a0; margin-bottom: 3rem; }
@@ -123,36 +115,10 @@ def switch_chat(chat_id):
     st.session_state.current_uploaded_files = []
     st.rerun()
 
-def format_file_size(size_bytes):
-    for unit in ['B', 'KB', 'MB', 'GB']:
-        if size_bytes < 1024.0:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024.0
-    return f"{size_bytes:.1f} TB"
-
-def process_uploaded_file(uploaded_file):
-    file_bytes = uploaded_file.read()
-    file_type = uploaded_file.type
-    file_name = uploaded_file.name
-    uploaded_file.seek(0)
-
-    result = {
-        "name": file_name,
-        "type": file_type,
-        "size": len(file_bytes),
-        "raw_bytes": file_bytes
-    }
-    return result
-
 def generate_chat_title(first_message):
     if len(first_message) > 30:
         return first_message[:27] + "..."
     return first_message
-
-def store_uploaded_files():
-    key = f"file_uploader_slot_{st.session_state.uploader_key}"
-    if key in st.session_state and st.session_state[key] is not None:
-        st.session_state.current_uploaded_files = st.session_state[key]
 
 # ==================== SIDEBAR LAYER ====================
 with st.sidebar:
@@ -202,15 +168,6 @@ with st.sidebar:
 
     st.markdown("<hr style='border: 0; height: 1px; background: #2d2d2d; margin: 1.5rem 0;'>", unsafe_allow_html=True)
 
-    with st.expander("📎 Attach Documents", expanded=True):
-        st.file_uploader(
-            "Supported formats: Images, PDFs, CSV, Text",
-            type=["png", "jpg", "jpeg", "gif", "webp", "pdf", "txt", "csv", "json", "md"],
-            accept_multiple_files=True,
-            key=f"file_uploader_slot_{st.session_state.uploader_key}",
-            on_change=store_uploaded_files
-        )
-
     st.markdown(f"""
         <div class="user-profile-box">
             <div style='display: flex; align-items: center; gap: 0.75rem;'>
@@ -238,9 +195,6 @@ if len(current_chat["messages"]) > 0:
         avatar = "👤" if message["role"] == "user" else "🤖"
         with st.chat_message(message["role"], avatar=avatar):
             st.markdown(message["content"])
-            if "attachments" in message:
-                for attachment in message["attachments"]:
-                    st.markdown(f"<div class='attachment-badge'>📎 {attachment['name']} ({format_file_size(attachment['size'])})</div>", unsafe_allow_html=True)
 
 else:
     st.markdown("""
@@ -269,19 +223,7 @@ suggestion_target = st.session_state.pop("suggestion_prompt", None)
 # ==================== ENGINE INFERENCE LOGIC ====================
 if prompt := st.chat_input("Ask me anything...", key="chat_input") or suggestion_target:
     actual_prompt = prompt if prompt else suggestion_target
-    
-    attachments = []
     user_msg = {"role": "user", "content": actual_prompt, "timestamp": datetime.now()}
-    
-    if st.session_state.current_uploaded_files:
-        for file in st.session_state.current_uploaded_files:
-            file.seek(0)
-            file_info = process_uploaded_file(file)
-            attachments.append(file_info)
-    
-    if attachments:
-        user_msg["attachments"] = [{"name": a["name"], "type": a["type"], "size": a["size"]} for a in attachments]
-        
     current_chat["messages"].append(user_msg)
 
     if current_chat["title"] == "New Chat":
@@ -290,36 +232,21 @@ if prompt := st.chat_input("Ask me anything...", key="chat_input") or suggestion
     st.rerun()
 
 if len(current_chat["messages"]) > 0 and current_chat["messages"][-1]["role"] == "user":
-    
     last_user_message = current_chat["messages"][-1]
-    openai_contents = [{"type": "text", "text": last_user_message["content"]}]
     
-    if st.session_state.current_uploaded_files:
-        for file in st.session_state.current_uploaded_files:
-            file.seek(0)
-            file_info = process_uploaded_file(file)
-            
-            # Text based attachment handling
-            if file_info["type"] in ['text/plain', 'text/csv', 'application/json', 'text/markdown']:
-                text_content = file_info["raw_bytes"].decode('utf-8', errors='ignore')
-                openai_contents[0]["text"] += f"\n\n📎 Content of {file_info['name']}:\n```\n{text_content}\n```\n"
-
     with st.chat_message("assistant", avatar="🤖"):
         message_placeholder = st.empty()
         full_response = ""
 
         if not client:
-            full_response = "⚠️ Please configure your GROQ API_KEY inside the core initialization module thread."
+            full_response = "⚠️ Please configure your GROQ_API_KEY inside the core initialization module thread."
             message_placeholder.markdown(full_response)
         else:
             try:
                 api_messages = []
-                for m in current_chat["messages"][:-1]:
+                for m in current_chat["messages"]:
                     api_messages.append({"role": m["role"], "content": m["content"]})
-                
-                api_messages.append({"role": "user", "content": openai_contents})
 
-                # Stream structure response
                 response = client.chat.completions.create(
                     model=active_model_name,
                     messages=api_messages,
@@ -341,7 +268,4 @@ if len(current_chat["messages"]) > 0 and current_chat["messages"][-1]["role"] ==
         "content": full_response,
         "timestamp": datetime.now()
     })
-    
-    st.session_state.current_uploaded_files = []
-    st.session_state.uploader_key += 1
     st.rerun()
